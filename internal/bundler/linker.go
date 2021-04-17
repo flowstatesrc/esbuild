@@ -2471,7 +2471,7 @@ func (c *linkerContext) markPartLiveForTreeShaking(sourceIndex uint32, partIndex
 	part := &repr.AST.Parts[partIndex]
 
 	// Don't mark this part more than once
-	if part.IsLive {
+	if part.IsLive || part.IsDead {
 		return
 	}
 	part.IsLive = true

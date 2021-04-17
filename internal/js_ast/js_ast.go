@@ -1874,6 +1874,9 @@ type Part struct {
 	// This is true if this file has been marked as live by the tree shaking
 	// algorithm.
 	IsLive bool
+
+	// If this is true, the part will be removed by the tree shaking algorithm.
+	IsDead bool
 }
 
 type Dependency struct {

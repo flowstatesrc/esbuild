@@ -224,7 +224,7 @@ func (c *FlowStateCompiler) CompileServer() BuildResult {
 		}
 		for _, f := range analyzer.serverFunctions {
 			if f.part != nil {
-				// TODO unmark this as ForceRemove
+				f.part.IsDead = false
 			}
 		}
 	}
@@ -344,8 +344,7 @@ func (c *FlowStateCompiler) generateServerFile(validators map[string]importsByNa
 						if analyzer != nil {
 							if f := analyzer.serverFunctions[ref]; f != nil {
 								if f.part != nil {
-									// TODO set ForceRemove to ensure this part gets removed by tree-shaking
-									//f.part.ForceRemove = true
+									f.part.IsDead = true
 								}
 							}
 						}
