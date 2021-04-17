@@ -5,10 +5,10 @@ import (
 	"os"
 	"path"
 
-	"github.com/evanw/esbuild/internal/bundler"
 	"github.com/evanw/esbuild/internal/cache"
 	"github.com/evanw/esbuild/internal/config"
 	"github.com/evanw/esbuild/internal/fs"
+	"github.com/evanw/esbuild/internal/graph"
 	"github.com/evanw/esbuild/internal/logger"
 )
 
@@ -18,15 +18,12 @@ var log = log_.New(os.Stderr, "", log_.Lshortfile)
 func BuildFlowState(opts *FlowStateOptions) BuildResult {
 	log.Println("configuring build")
 
-	// Lifted from apu_impl.go buildImpl
+	// Lifted from api_impl.go buildImpl
 	logOptions := logger.OutputOptions{
 		IncludeSource: true,
-		ErrorLimit:    opts.Client.ErrorLimit,
+		MessageLimit:  opts.Client.LogLimit,
 		Color:         validateColor(opts.Client.Color),
 		LogLevel:      validateLogLevel(opts.Client.LogLevel),
-
-		// If there's a busy indicator, print a newline to avoid overwriting it
-		NewlineBeforeFirstMessage: opts.Watch && opts.Client.LogLevel == LogLevelInfo,
 	}
 	loggerInstance := logger.NewStderrLog(logOptions)
 
@@ -37,6 +34,7 @@ func BuildFlowState(opts *FlowStateOptions) BuildResult {
 	} else {
 		f, err = fs.RealFS(fs.RealFSOptions{
 			AbsWorkingDir: opts.Client.AbsWorkingDir,
+			WantWatchData: opts.Watch,
 		})
 		if err != nil {
 			loggerInstance.AddError(nil, logger.Loc{}, err.Error())
@@ -45,7 +43,11 @@ func BuildFlowState(opts *FlowStateOptions) BuildResult {
 	}
 
 	log.Println("loading plugins")
-	plugins := loadPlugins(f, loggerInstance, opts.Client.Plugins)
+	oldAbsWorkingDir := opts.Client.AbsWorkingDir
+	plugins := loadPlugins(&opts.Client, f, loggerInstance)
+	if opts.Client.AbsWorkingDir != oldAbsWorkingDir {
+		panic("Mutating \"AbsWorkingDir\" is not allowed")
+	}
 	caches := cache.MakeCacheSet()
 
 	buildClient := func() BuildResult {
@@ -54,25 +56,10 @@ func BuildFlowState(opts *FlowStateOptions) BuildResult {
 		return value.result
 	}
 
-	// Lifted from cli_impl.go runImpl
-	if opts.Watch {
-		opts.Client.Watch = &WatchMode{
-			SpinnerBusy: "··· ",
-			SpinnerIdle: []string{
-				"▫▫▫ ",
-				"▪▫▫ ",
-				"▪▪▫ ",
-				"▪▪▪ ",
-				"▫▪▪ ",
-				"▫▫▪ ",
-			},
-		}
-	}
-
 	compiler := NewFlowStateCompiler(opts, logOptions, loggerInstance, f, caches)
 	output := make([]OutputFile, 0, 3)
 
-	opts.Client.OnBundleCompile = func(options *config.Options, _ logger.Log, _ fs.FS, files []bundler.JSFile, entryPoints []uint32) {
+	opts.Client.OnBundleCompile = func(options *config.Options, _ logger.Log, _ fs.FS, files []graph.InputFile, entryPoints []graph.EntryPoint) {
 		if len(entryPoints) == 0 {
 			panic("no entry point defined")
 		}
@@ -82,7 +69,7 @@ func BuildFlowState(opts *FlowStateOptions) BuildResult {
 		if outDir == "" {
 			outDir = path.Dir(options.AbsOutputFile)
 		}
-		baseDir := path.Dir(files[entryPoints[0]].Source.KeyPath.Text)
+		baseDir := path.Dir(files[entryPoints[0].SourceIndex].Source.KeyPath.Text)
 		compiler.CompileClient(outDir, baseDir, files)
 
 		if len(compiler.clientWhitelistFile.Contents) > 2 {

@@ -6,8 +6,10 @@ package fs
 
 import (
 	"errors"
+	"os"
 	"path"
 	"strings"
+	"sync"
 	"syscall"
 )
 
@@ -46,7 +48,7 @@ func MockFS(input map[string]string) FS {
 		}
 	}
 
-	return &mockFS{dirs, files}
+	return &mockFS{dirs, files, sync.Mutex{}}
 }
 
 func (fs *mockFS) ReadDirectory(path string) (DirEntries, error, error) {

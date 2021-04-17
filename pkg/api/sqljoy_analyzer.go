@@ -1,7 +1,7 @@
 package api
 
 import (
-	"github.com/evanw/esbuild/internal/bundler"
+	"github.com/evanw/esbuild/internal/graph"
 	"github.com/evanw/esbuild/internal/js_ast"
 	"github.com/evanw/esbuild/internal/logger"
 )
@@ -45,7 +45,8 @@ type queryPart struct {
 
 type FlowStateAnalyzer struct {
 	compiler *FlowStateCompiler
-	file bundler.JSFile
+	file *graph.InputFile
+	ast *js_ast.AST
 	exports map[js_ast.Ref]js_ast.Ref
 	exportedNamespaces map[js_ast.Ref]uint32
 	queryParts []queryPart
@@ -62,18 +63,23 @@ type FlowStateAnalyzer struct {
 	mergeImportRef js_ast.Ref
 }
 
-func NewFlowStateAnalyzer(compiler *FlowStateCompiler, file bundler.JSFile) *FlowStateAnalyzer {
-	return &FlowStateAnalyzer{
-		compiler: compiler,
-		file:     file,
-		exports: map[js_ast.Ref]js_ast.Ref{},
-		exportedNamespaces: map[js_ast.Ref]uint32{},
-		inlineTemplates: map[*js_ast.ETemplate]js_ast.Ref{},
-		aliases: map[js_ast.Ref]js_ast.Ref{},
-		serverFunctions: map[js_ast.Ref]*localFunction{},
-		serverFunctionsByCtxVar: map[js_ast.Ref]*localFunction{},
-		mergeImportRef: js_ast.InvalidRef,
+func NewFlowStateAnalyzer(compiler *FlowStateCompiler, file *graph.InputFile) *FlowStateAnalyzer {
+	if js, ok := file.Repr.(*graph.JSRepr); ok {
+		ast := &js.AST
+		return &FlowStateAnalyzer{
+			compiler: compiler,
+			file:     file,
+			ast: ast,
+			exports: map[js_ast.Ref]js_ast.Ref{},
+			exportedNamespaces: map[js_ast.Ref]uint32{},
+			inlineTemplates: map[*js_ast.ETemplate]js_ast.Ref{},
+			aliases: map[js_ast.Ref]js_ast.Ref{},
+			serverFunctions: map[js_ast.Ref]*localFunction{},
+			serverFunctionsByCtxVar: map[js_ast.Ref]*localFunction{},
+			mergeImportRef: js_ast.InvalidRef,
+		}
 	}
+	return nil
 }
 
 func (a *FlowStateAnalyzer) VisitStmt(stmt *js_ast.Stmt, part *js_ast.Part) StmtVisitor {
@@ -93,16 +99,16 @@ func (a *FlowStateAnalyzer) VisitStmt(stmt *js_ast.Stmt, part *js_ast.Part) Stmt
 		// We need to create a bridge from the exported Ref to the exported Ref in the file it references
 		for _, item := range s.Items {
 			expRef := item.Name.Ref
-			imp := a.file.Ast.ImportRecords[s.ImportRecordIndex]
-			if imp.SourceIndex != nil {
-				targetExport := a.compiler.files[*imp.SourceIndex].Ast.NamedExports[item.OriginalName]
+			imp := a.ast.ImportRecords[s.ImportRecordIndex]
+			if imp.SourceIndex.IsValid() {
+				targetExport := a.compiler.analyzers[imp.SourceIndex.GetIndex()].ast.NamedExports[item.OriginalName]
 				a.exports[expRef] = targetExport.Ref
 			}
 		}
 	case *js_ast.SExportStar:
-		imp := a.file.Ast.ImportRecords[s.ImportRecordIndex]
-		if imp.SourceIndex != nil {
-			a.exportedNamespaces[s.NamespaceRef] = *imp.SourceIndex
+		imp := a.ast.ImportRecords[s.ImportRecordIndex]
+		if imp.SourceIndex.IsValid() {
+			a.exportedNamespaces[s.NamespaceRef] = imp.SourceIndex.GetIndex()
 		}
 	}
 	return a
@@ -178,10 +184,10 @@ func (a *FlowStateAnalyzer) recordExport(stmt js_ast.S, decl *js_ast.Decl, paren
 	identifier := js_ast.InvalidRef
 	switch e := expr.(type) {
 	case *js_ast.EIdentifier:
-		identName = a.file.Ast.Symbols[e.Ref.InnerIndex].OriginalName
+		identName = a.ast.Symbols[e.Ref.InnerIndex].OriginalName
 		identifier = e.Ref
 	case *js_ast.EImportIdentifier:
-		identName = a.file.Ast.Symbols[e.Ref.InnerIndex].OriginalName
+		identName = a.ast.Symbols[e.Ref.InnerIndex].OriginalName
 		identifier = e.Ref
 	default:
 		return
@@ -213,7 +219,7 @@ func (a *FlowStateAnalyzer) recordExport(stmt js_ast.S, decl *js_ast.Decl, paren
 
 func (a *FlowStateAnalyzer) recordAlias(decl *js_ast.Decl, ref js_ast.Ref) {
 	if identifier, ok := decl.Binding.Data.(*js_ast.BIdentifier); ok {
-		log.Printf("alias %s -> %s\n", a.file.Ast.Symbols[identifier.Ref.InnerIndex].OriginalName, a.file.Ast.Symbols[ref.InnerIndex].OriginalName)
+		log.Printf("alias %s -> %s\n", a.ast.Symbols[identifier.Ref.InnerIndex].OriginalName, a.ast.Symbols[ref.InnerIndex].OriginalName)
 		a.aliases[identifier.Ref] = ref
 	}
 }
@@ -299,7 +305,7 @@ func (a *FlowStateAnalyzer) recordSQLTemplate(stmt *js_ast.Stmt, decl *js_ast.De
 		return false
 	}
 
-	symbol := a.file.Ast.Symbols[ref.InnerIndex]
+	symbol := a.ast.Symbols[ref.InnerIndex]
 	if symbol.OriginalName != sqlTemplateTag {
 		return false
 	}
@@ -338,7 +344,7 @@ CheckParents:
 					}
 				}
 				highestInner++
-				ref = js_ast.Ref{OuterIndex: a.file.Source.Index, InnerIndex: highestInner}
+				ref = js_ast.Ref{SourceIndex: a.file.Source.Index, InnerIndex: highestInner}
 				a.inlineTemplates[template] = ref
 				log.Printf("template is inline in call expr, tagging with ref %v\n", ref)
 				break CheckParents
@@ -370,7 +376,7 @@ CheckParents:
 		ref:           ref,
 		parent:        expr,
 		template:      template,
-		definedSource: a.file.Source,
+		definedSource: &a.file.Source,
 		isFragment: isFragment,
 	})
 
@@ -387,12 +393,12 @@ func (a *FlowStateAnalyzer) recordFlowStateCall(parent *js_ast.Expr, call *js_as
 		return false
 	}
 
-	ast := a.file.Ast
+	ast := a.ast
 
 	isPossibleServerCall := func(ref js_ast.Ref) bool {
 		symbol := ast.Symbols[ref.InnerIndex]
 		if symbol.OriginalName == queryExecuteMethodName {
-			a.compiler.log.AddError(a.file.Source, call.Target.Loc, "executeQuery must be invoked as a method")
+			a.compiler.log.AddError(&a.file.Source, call.Target.Loc, "executeQuery must be invoked as a method")
 			return false
 		}
 		return true

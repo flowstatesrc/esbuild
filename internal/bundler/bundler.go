@@ -1826,12 +1826,7 @@ func applyOptionDefaults(options *config.Options) {
 	}
 }
 
-type JSFile struct {
-	Source *logger.Source
-	Ast *js_ast.AST
-}
-
-type OnBundleCompile = func(options *config.Options, log logger.Log, fs fs.FS, files []JSFile, entryPoints []uint32)
+type OnBundleCompile = func(options *config.Options, log logger.Log, fs fs.FS, files []graph.InputFile, entryPoints []graph.EntryPoint)
 
 func (b *Bundle) Compile(log logger.Log, options config.Options, onCompile OnBundleCompile) ([]graph.OutputFile, string) {
 	start := time.Now()
@@ -1852,13 +1847,6 @@ func (b *Bundle) Compile(log logger.Log, options config.Options, onCompile OnBun
 	}
 
 	if onCompile != nil {
-		files := make([]JSFile, len(b.files))
-		for i := range b.files {
-			files[i].Source = &b.files[i].source
-			if js, ok := b.files[i].repr.(*reprJS); ok {
-				files[i].Ast = &js.ast
-			}
-		}
 		onCompile(&options, log, b.fs, files, b.entryPoints)
 	}
 

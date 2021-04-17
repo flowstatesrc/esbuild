@@ -2,7 +2,6 @@ package api
 
 import (
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"regexp"

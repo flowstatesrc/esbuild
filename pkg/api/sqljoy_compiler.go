@@ -10,10 +10,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/evanw/esbuild/internal/bundler"
 	"github.com/evanw/esbuild/internal/cache"
 	"github.com/evanw/esbuild/internal/config"
 	"github.com/evanw/esbuild/internal/fs"
+	"github.com/evanw/esbuild/internal/graph"
 	"github.com/evanw/esbuild/internal/js_ast"
 	"github.com/evanw/esbuild/internal/js_lexer"
 	"github.com/evanw/esbuild/internal/logger"
@@ -132,7 +132,7 @@ type FlowStateCompiler struct {
 	log             logger.Log
 	fs              fs.FS
 	caches          *cache.CacheSet
-	files           []bundler.JSFile
+	files           []graph.InputFile
 	baseDir         string
 	outDir          string
 	wg              sync.WaitGroup
@@ -158,32 +158,31 @@ func NewFlowStateCompiler(opts *FlowStateOptions, logOptions logger.OutputOption
 	}
 }
 
-func (c *FlowStateCompiler) CompileClient(outDir, baseDir string, files []bundler.JSFile) {
+func (c *FlowStateCompiler) CompileClient(outDir, baseDir string, files []graph.InputFile) {
 	c.outDir = outDir
 	c.baseDir = baseDir
 	c.files = files
-	analyzers := make([]*FlowStateAnalyzer, len(c.files))
-	for i, file := range c.files {
-		if file.Ast != nil {
-			path := file.Source.KeyPath.Text
-			if file.Source.KeyPath.Namespace != "file" && path == "<runtime>" {
-				continue // ignore runtime module
+	analyzers := make([]*FlowStateAnalyzer, len(files))
+	for i := range files {
+		file := &files[i]
+		path := file.Source.KeyPath.Text
+		if file.Source.KeyPath.Namespace != "file" && path == "<runtime>" {
+			continue // ignore runtime module
+		}
+		for _, dir := range c.opts.Exclude {
+			if strings.HasPrefix(path, dir) {
+				continue
 			}
-			for _, dir := range c.opts.Exclude {
+		}
+		if len(c.opts.Include) != 0 {
+			for _, dir := range c.opts.Include {
 				if strings.HasPrefix(path, dir) {
-					continue
+					analyzers[i] = NewFlowStateAnalyzer(c, file)
+					break
 				}
 			}
-			if len(c.opts.Include) != 0 {
-				for _, dir := range c.opts.Include {
-					if strings.HasPrefix(path, dir) {
-						analyzers[i] = NewFlowStateAnalyzer(c, file)
-						break
-					}
-				}
-			} else {
-				analyzers[i] = NewFlowStateAnalyzer(c, file)
-			}
+		} else {
+			analyzers[i] = NewFlowStateAnalyzer(c, file)
 		}
 	}
 
@@ -225,7 +224,7 @@ func (c *FlowStateCompiler) CompileServer() BuildResult {
 		}
 		for _, f := range analyzer.serverFunctions {
 			if f.part != nil {
-				f.part.ForceRemove = false
+				// TODO unmark this as ForceRemove
 			}
 		}
 	}
@@ -235,7 +234,7 @@ func (c *FlowStateCompiler) CompileServer() BuildResult {
 		ResolveDir: c.baseDir,
 	}
 
-	c.opts.Server.OnBundleCompile = func(options *config.Options, _ logger.Log, _ fs.FS, files []bundler.JSFile, entryPoints []uint32) {
+	c.opts.Server.OnBundleCompile = func(options *config.Options, _ logger.Log, _ fs.FS, files []graph.InputFile, entryPoints []graph.EntryPoint) {
 		if len(entryPoints) == 0 {
 			panic("no entry point defined")
 		}
@@ -248,12 +247,12 @@ func (c *FlowStateCompiler) CompileServer() BuildResult {
 
 func (c *FlowStateCompiler) visitFile(analyzer *FlowStateAnalyzer) {
 	log.Printf("scan: %s\n", path.Base(analyzer.file.Source.KeyPath.Text))
-	WalkAst(analyzer, analyzer, analyzer.file.Ast)
+	WalkAst(analyzer, analyzer, analyzer.ast)
 	c.wg.Done()
 }
 
 func (c *FlowStateCompiler) findImportForFunctionIdentifier(analyzer *FlowStateAnalyzer, fIdent *js_ast.Expr, calls map[string]importsByName) (*js_ast.Symbol, importedName) {
-	ast := analyzer.file.Ast
+	ast := analyzer.ast
 	ref, _ := getRefForIdentifierOrPropertyAccess(nil, fIdent)
 	symbol := &ast.Symbols[ref.InnerIndex]
 	imported, isImport := ast.NamedImports[ref]
@@ -267,11 +266,11 @@ func (c *FlowStateCompiler) findImportForFunctionIdentifier(analyzer *FlowStateA
 		if f := analyzer.serverFunctions[ref]; f != nil {
 			if f.fnStmt != nil {
 				if !f.fnStmt.IsExport {
-					c.log.AddError(analyzer.file.Source, fIdent.Loc, fmt.Sprintf("function %s must be exported", symbol.OriginalName))
+					c.log.AddError(&analyzer.file.Source, fIdent.Loc, fmt.Sprintf("function %s must be exported", symbol.OriginalName))
 				}
 			}	else if f.local != nil {
 				if !f.local.IsExport {
-					c.log.AddError(analyzer.file.Source, fIdent.Loc, fmt.Sprintf("function %s must be exported", symbol.OriginalName))
+					c.log.AddError(&analyzer.file.Source, fIdent.Loc, fmt.Sprintf("function %s must be exported", symbol.OriginalName))
 				}
 			} else {
 				panic("serverFunction instance missing required field")
@@ -286,7 +285,7 @@ func (c *FlowStateCompiler) findImportForFunctionIdentifier(analyzer *FlowStateA
 			imp = newImport(relPath, symbol.OriginalName)
 			calls[relPath] = append(calls[relPath], imp)
 		} else {
-			c.log.AddError(analyzer.file.Source, fIdent.Loc, fmt.Sprintf("server call %s must refer to a top level exportable function", symbol.OriginalName))
+			c.log.AddError(&analyzer.file.Source, fIdent.Loc, fmt.Sprintf("server call %s must refer to a top level exportable function", symbol.OriginalName))
 			return nil, importedName{}
 		}
 	}
@@ -339,13 +338,14 @@ func (c *FlowStateCompiler) generateServerFile(validators map[string]importsByNa
 				if symbol.UseCountEstimate == 0 {
 					// Remove this function from the client bundle (we restore it when building the server bundle later)
 					ref, prop := getRefForIdentifierOrPropertyAccess(visitor, &serverCall.call.Target)
-					ref = c.findOriginalRef(&visitor.file, ref, prop)
+					ref = c.findOriginalRef(visitor, ref, prop)
 					if ref != js_ast.InvalidRef {
-						analyzer := c.analyzers[ref.OuterIndex]
+						analyzer := c.analyzers[ref.SourceIndex]
 						if analyzer != nil {
 							if f := analyzer.serverFunctions[ref]; f != nil {
 								if f.part != nil {
-									f.part.ForceRemove = true
+									// TODO set ForceRemove to ensure this part gets removed by tree-shaking
+									//f.part.ForceRemove = true
 								}
 							}
 						}
@@ -441,13 +441,13 @@ func (c *FlowStateCompiler) generateOutputs() {
 
 			if len(queryExec.queries) == 0 {
 				// Not a supported query execution expression, issue an error
-				c.log.AddError(analyzer.file.Source, queryExec.call.Args[0].Loc, "could not identify query for first argument to executeQuery")
+				c.log.AddError(&analyzer.file.Source, queryExec.call.Args[0].Loc, "could not identify query for first argument to executeQuery")
 				continue
 			}
 
 			for _, q := range queryExec.queries {
 				if q.isFragment {
-					c.log.AddError(analyzer.file.Source, queryExec.call.Args[0].Loc, "cannot use a query part (created with sql.p``) as a query: use sql`${part}` instead")
+					c.log.AddError(&analyzer.file.Source, queryExec.call.Args[0].Loc, "cannot use a query part (created with sql.p``) as a query: use sql`${part}` instead")
 					continue
 				}
 				q.calls = append(q.calls, queryUsage{sourceIndex: uint32(sourceIndex), isServer: queryExec.isServer, call: queryExec.call})
@@ -692,7 +692,7 @@ func (c *FlowStateCompiler) replaceQuery(visitor *FlowStateAnalyzer, q *query) {
 			if fragment.IsPublic {
 				private = false // if one fragment is public, the whole group is
 			}
-			c.replaceQuery(c.analyzers[fragment.ref.OuterIndex], fragment)
+			c.replaceQuery(c.analyzers[fragment.ref.SourceIndex], fragment)
 		}
 		// If any group of fragments is private, the query is private
 		if q.IsPublic && private {
@@ -701,52 +701,60 @@ func (c *FlowStateCompiler) replaceQuery(visitor *FlowStateAnalyzer, q *query) {
 	}
 }
 
-func (c *FlowStateCompiler) findOriginalRef(file *bundler.JSFile, ref js_ast.Ref, prop string) js_ast.Ref {
-	log.Printf("findOriginalRef(%d, %v, %q)\n", file.Source.Index, ref, prop)
-	for ref != js_ast.InvalidRef {
-		queryImport, isImported := file.Ast.NamedImports[ref]
+func (c *FlowStateCompiler) findOriginalRef(analyzer *FlowStateAnalyzer, ref js_ast.Ref, prop string) js_ast.Ref {
+	log.Printf("findOriginalRef(%d, %v, %q)\n", analyzer.file.Source.Index, ref, prop)
+	for ref != js_ast.InvalidRef && analyzer != nil {
+		queryImport, isImported := analyzer.ast.NamedImports[ref]
 		if isImported {
-			impRecord := file.Ast.ImportRecords[queryImport.ImportRecordIndex]
-			exportingFile := &c.files[*impRecord.SourceIndex]
-			expAst := exportingFile.Ast
-			if exp, ok := expAst.NamedExports[queryImport.Alias]; ok {
-				ref = exp.Ref
-			} else if exp, ok := expAst.NamedExports[prop]; ok {
-				ref = exp.Ref
-				prop = ""
-			} else if len(expAst.ExportStarImportRecords) != 0 {
-				for _, i := range expAst.ExportStarImportRecords {
-					otherFile := &c.files[*expAst.ImportRecords[i].SourceIndex]
-					if exp, ok := otherFile.Ast.NamedExports[queryImport.Alias]; ok {
-						ref = exp.Ref
-						break
-					}
-				}
-			} else {
-				log.Printf("can't find export for %s in %d", queryImport.Alias, exportingFile.Source.Index)
+			impRecord := analyzer.ast.ImportRecords[queryImport.ImportRecordIndex]
+			if !impRecord.SourceIndex.IsValid() {
 				break
 			}
-			file = exportingFile
+			exportingFile := &c.files[impRecord.SourceIndex.GetIndex()]
+			if _, ok := exportingFile.Repr.(*graph.JSRepr); ok {
+				// TODO
+				break
+				//if exp, ok := expAst.NamedExports[queryImport.Alias]; ok {
+				//	ref = exp.Ref
+				//} else if exp, ok := expAst.NamedExports[prop]; ok {
+				//	ref = exp.Ref
+				//	prop = ""
+				//} else if len(expAst.ExportStarImportRecords) != 0 {
+				//	for _, i := range expAst.ExportStarImportRecords {
+				//		otherFile := &c.files[*expAst.ImportRecords[i].SourceIndex]
+				//		if exp, ok := otherFile.Ast.NamedExports[queryImport.Alias]; ok {
+				//			ref = exp.Ref
+				//			break
+				//		}
+				//	}
+				//} else {
+				//	log.Printf("can't find export for %s in %d", queryImport.Alias, exportingFile.Source.Index)
+				//	break
+				//}
+			} else {
+				break;
+			}
 		} else {
-			log.Printf("checking aliases and exports in %d\n", ref.OuterIndex)
-			analyzer := c.analyzers[ref.OuterIndex]
+			log.Printf("checking aliases and exports in %d\n", ref.SourceIndex)
+			analyzer := c.analyzers[ref.SourceIndex]
 			if analyzer == nil {
 				break
 			}
-			if expRef, ok := c.analyzers[ref.OuterIndex].exports[ref]; ok {
+			if expRef, ok := c.analyzers[ref.SourceIndex].exports[ref]; ok {
 				ref = expRef
-			} else if aliasedRef, ok := c.analyzers[ref.OuterIndex].aliases[ref]; ok {
+			} else if aliasedRef, ok := c.analyzers[ref.SourceIndex].aliases[ref]; ok {
 				ref = aliasedRef
-				file = &c.files[ref.OuterIndex]
+				analyzer = c.analyzers[ref.SourceIndex]
 			} else if prop != "" {
-				log.Printf("looking for exported namespace %v in %d\n", ref, ref.OuterIndex)
-				if ns, ok := c.analyzers[ref.OuterIndex].exportedNamespaces[ref]; ok {
-					file = &c.files[ns]
-					if exp, ok := file.Ast.NamedExports[prop]; ok {
-						ref = exp.Ref
-						prop = ""
-						continue
-					}
+				log.Printf("looking for exported namespace %v in %d\n", ref, ref.SourceIndex)
+				if ns, ok := c.analyzers[ref.SourceIndex].exportedNamespaces[ref]; ok {
+					analyzer = c.analyzers[ns]
+					// TODO!
+					//if exp, ok := ast.NamedExports[prop]; ok {
+					//	ref = exp.Ref
+					//	prop = ""
+					//	continue
+					//}
 				}
 				break
 			} else {
@@ -764,7 +772,7 @@ func (c *FlowStateCompiler) addQueryUsageLocations(q *query) bool {
 		} else {
 			q.ClientReferences += 1
 		}
-		location := logger.LocationOrNil(c.files[call.sourceIndex].Source, logger.Range{Loc: call.call.Target.Loc})
+		location := logger.LocationOrNil(&c.files[call.sourceIndex].Source, logger.Range{Loc: call.call.Target.Loc})
 		if location != nil {
 			insert := true
 			for _, usage := range q.Usages {
@@ -843,9 +851,9 @@ func (c *FlowStateCompiler) findQueryForExpr(analyzer *FlowStateAnalyzer, allQue
 		}
 	}
 	if analyzer == nil {
-		analyzer = c.analyzers[queryRef.OuterIndex]
+		analyzer = c.analyzers[queryRef.SourceIndex]
 	}
-	queryRef = c.findOriginalRef(&analyzer.file, queryRef, prop)
+	queryRef = c.findOriginalRef(analyzer, queryRef, prop)
 	a := allQueries[queryRef]
 	log.Printf("%d queries found for original ref %v\n", len(a), queryRef)
 	sort.Sort(a)
