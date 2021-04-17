@@ -701,7 +701,7 @@ func TestQueryOnGetClientDirect(t *testing.T) {
 	assert.Len(t, whitelist, 1)
 
 	code := string(getOutFile(&result, "client.bundle.js"))
-	assert.Contains(t, code, `getClient().executeQuery({query: "girgfUeDFYvBkSu2I-UQfMkALVGeEUOpwgDtbuGL", text: "select 1", params: {}})`)
+	assert.Contains(t, code, `getClient)().executeQuery({query: "girgfUeDFYvBkSu2I-UQfMkALVGeEUOpwgDtbuGL", text: "select 1", params: {}})`)
 }
 
 //func TestInlineTernayExpression(t *testing.T) {
