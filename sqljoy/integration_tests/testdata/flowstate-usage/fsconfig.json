@@ -1,0 +1,10 @@
+{
+	"client": {
+		"entryPoints": ["src/index.js"],
+		"minifySyntax": false
+	},
+	"server": {
+		"minifySyntax": false
+	},
+	"logLevel": "info"
+}

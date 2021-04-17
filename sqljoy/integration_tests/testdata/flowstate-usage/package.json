@@ -1,0 +1,21 @@
+{
+  "name": "flowstate-usage",
+  "version": "0.1.0",
+  "private": false,
+  "dependencies": {
+    "flowstate": "file:../../../../../flowstate/flowstate-client"
+  },
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "predeploy": "npm run build"
+  },
+  "eslintConfig": {
+    "extends": "react-app"
+  },
+  "homepage": "https://flowstate.dev"
+}

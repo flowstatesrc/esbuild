@@ -669,6 +669,7 @@ func buildImpl(buildOpts BuildOptions) internalBuildResult {
 	// Validate that the current working directory is an absolute path
 	realFS, err := fs.RealFS(fs.RealFSOptions{
 		AbsWorkingDir: buildOpts.AbsWorkingDir,
+		WantWatchData: buildOpts.Watch != nil,
 	})
 	if err != nil {
 		log.AddError(nil, logger.Loc{}, err.Error())
@@ -684,7 +685,7 @@ func buildImpl(buildOpts BuildOptions) internalBuildResult {
 		panic("Mutating \"AbsWorkingDir\" is not allowed")
 	}
 
-	internalResult := rebuildImpl(buildOpts, cache.MakeCacheSet(), plugins, logOptions, log, false /* isRebuild */)
+	internalResult := rebuildImpl(realFS, buildOpts, cache.MakeCacheSet(), plugins, logOptions, log, false /* isRebuild */)
 
 	// Print a summary of the generated files to stderr. Except don't do
 	// this if the terminal is already being used for something else.
@@ -744,6 +745,7 @@ func printSummary(logOptions logger.OutputOptions, outputFiles []OutputFile, sta
 }
 
 func rebuildImpl(
+	realFS fs.FS,
 	buildOpts BuildOptions,
 	caches *cache.CacheSet,
 	plugins []config.Plugin,
@@ -751,15 +753,6 @@ func rebuildImpl(
 	log logger.Log,
 	isRebuild bool,
 ) internalBuildResult {
-	// Convert and validate the buildOpts
-	realFS, err := fs.RealFS(fs.RealFSOptions{
-		AbsWorkingDir: buildOpts.AbsWorkingDir,
-		WantWatchData: buildOpts.Watch != nil,
-	})
-	if err != nil {
-		// This should already have been checked above
-		panic(err.Error())
-	}
 	jsFeatures, cssFeatures, targetEnv := validateFeatures(log, buildOpts.Target, buildOpts.Engines)
 	outJS, outCSS := validateOutputExtensions(log, buildOpts.OutExtensions)
 	bannerJS, bannerCSS := validateBannerOrFooter(log, "banner", buildOpts.Banner)
@@ -915,7 +908,7 @@ func rebuildImpl(
 		// Stop now if there were errors
 		if !log.HasErrors() {
 			// Compile the bundle
-			results, metafile := bundle.Compile(log, options)
+			results, metafile := bundle.Compile(log, options, buildOpts.OnBundleCompile)
 			metafileJSON = metafile
 
 			// Stop now if there were errors
@@ -949,7 +942,7 @@ func rebuildImpl(
 									if result.IsExecutable {
 										mode = 0755
 									}
-									if err := ioutil.WriteFile(result.AbsPath, result.Contents, mode); err != nil {
+									if err := realFS.WriteFile(result.AbsPath, result.Contents, mode); err != nil {
 										log.AddError(nil, logger.Loc{}, fmt.Sprintf(
 											"Failed to write to output file: %s", err.Error()))
 									}
@@ -988,7 +981,7 @@ func rebuildImpl(
 			data:     watchData,
 			resolver: resolver,
 			rebuild: func() fs.WatchData {
-				value := rebuildImpl(buildOpts, caches, plugins, logOptions, logger.NewStderrLog(logOptions), true /* isRebuild */)
+				value := rebuildImpl(realFS, buildOpts, caches, plugins, logOptions, logger.NewStderrLog(logOptions), true /* isRebuild */)
 				if onRebuild != nil {
 					go onRebuild(value.result)
 				}
@@ -1005,7 +998,7 @@ func rebuildImpl(
 	var rebuild func() BuildResult
 	if buildOpts.Incremental {
 		rebuild = func() BuildResult {
-			value := rebuildImpl(buildOpts, caches, plugins, logOptions, logger.NewStderrLog(logOptions), true /* isRebuild */)
+			value := rebuildImpl(realFS, buildOpts, caches, plugins, logOptions, logger.NewStderrLog(logOptions), true /* isRebuild */)
 			if watch != nil {
 				watch.setWatchData(value.watchData)
 			}
@@ -1287,7 +1280,7 @@ func transformImpl(input string, transformOpts TransformOptions) TransformResult
 		// Stop now if there were errors
 		if !log.HasErrors() {
 			// Compile the bundle
-			results, _ = bundle.Compile(log, options)
+			results, _ = bundle.Compile(log, options, nil)
 		}
 	}
 

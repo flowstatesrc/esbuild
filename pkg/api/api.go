@@ -77,6 +77,10 @@
 //
 package api
 
+import (
+	"github.com/evanw/esbuild/internal/bundler"
+)
+
 type SourceMap uint8
 
 const (
@@ -281,6 +285,8 @@ type BuildOptions struct {
 	Plugins     []Plugin
 
 	Watch *WatchMode
+
+	OnBundleCompile bundler.OnBundleCompile
 }
 
 type EntryPoint struct {

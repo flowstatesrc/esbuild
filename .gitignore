@@ -18,3 +18,8 @@
 bin
 esbuild.exe
 node_modules/
+private/
+.idea/
+sjc
+sjc.exe
+changes.patch

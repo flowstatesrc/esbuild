@@ -14,6 +14,7 @@ import (
 type mockFS struct {
 	dirs  map[string]DirEntries
 	files map[string]string
+	lock sync.Mutex
 }
 
 func MockFS(input map[string]string) FS {
@@ -49,6 +50,8 @@ func MockFS(input map[string]string) FS {
 }
 
 func (fs *mockFS) ReadDirectory(path string) (DirEntries, error, error) {
+	fs.lock.Lock()
+	defer fs.lock.Unlock()
 	if dir, ok := fs.dirs[path]; ok {
 		return dir, nil, nil
 	}
@@ -56,10 +59,19 @@ func (fs *mockFS) ReadDirectory(path string) (DirEntries, error, error) {
 }
 
 func (fs *mockFS) ReadFile(path string) (string, error, error) {
+	fs.lock.Lock()
+	defer fs.lock.Unlock()
 	if contents, ok := fs.files[path]; ok {
 		return contents, nil, nil
 	}
 	return "", syscall.ENOENT, syscall.ENOENT
+}
+
+func (fs *mockFS) WriteFile(path string, contents []byte, perms os.FileMode) error {
+	fs.lock.Lock()
+	fs.files[path] = string(contents)
+	fs.lock.Unlock()
+	return nil
 }
 
 func (fs *mockFS) ModKey(path string) (ModKey, error) {

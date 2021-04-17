@@ -2,6 +2,7 @@ package fs
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"sync"
 )
@@ -92,6 +93,7 @@ type FS interface {
 	// mutate it.
 	ReadDirectory(path string) (entries DirEntries, canonicalError error, originalError error)
 	ReadFile(path string) (contents string, canonicalError error, originalError error)
+	WriteFile(path string, contents []byte, perms os.FileMode) error
 
 	// This is a key made from the information returned by "stat". It is intended
 	// to be different if the file has been edited, and to otherwise be equal if

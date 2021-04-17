@@ -211,6 +211,10 @@ func (fs *realFS) ReadFile(path string) (contents string, canonicalError error, 
 	return fileContents, canonicalError, originalError
 }
 
+func (fs *realFS) WriteFile(path string, contents []byte, perms os.FileMode) error {
+	return ioutil.WriteFile(path, contents, perms)
+}
+
 func (fs *realFS) ModKey(path string) (ModKey, error) {
 	BeforeFileOpen()
 	defer AfterFileClose()

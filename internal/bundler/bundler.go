@@ -1826,7 +1826,14 @@ func applyOptionDefaults(options *config.Options) {
 	}
 }
 
-func (b *Bundle) Compile(log logger.Log, options config.Options) ([]graph.OutputFile, string) {
+type JSFile struct {
+	Source *logger.Source
+	Ast *js_ast.AST
+}
+
+type OnBundleCompile = func(options *config.Options, log logger.Log, fs fs.FS, files []JSFile, entryPoints []uint32)
+
+func (b *Bundle) Compile(log logger.Log, options config.Options, onCompile OnBundleCompile) ([]graph.OutputFile, string) {
 	start := time.Now()
 	if log.Debug {
 		log.AddDebug(nil, logger.Loc{}, "Started the compile phase")
@@ -1842,6 +1849,17 @@ func (b *Bundle) Compile(log logger.Log, options config.Options) ([]graph.Output
 	files := make([]graph.InputFile, len(b.files))
 	for i, file := range b.files {
 		files[i] = file.inputFile
+	}
+
+	if onCompile != nil {
+		files := make([]JSFile, len(b.files))
+		for i := range b.files {
+			files[i].Source = &b.files[i].source
+			if js, ok := b.files[i].repr.(*reprJS); ok {
+				files[i].Ast = &js.ast
+			}
+		}
+		onCompile(&options, log, b.fs, files, b.entryPoints)
 	}
 
 	// Get the base path from the options or choose the lowest common ancestor of all entry points
