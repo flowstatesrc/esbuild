@@ -710,30 +710,36 @@ func (c *FlowStateCompiler) findOriginalRef(analyzer *FlowStateAnalyzer, ref js_
 			if !impRecord.SourceIndex.IsValid() {
 				break
 			}
-			exportingFile := &c.files[impRecord.SourceIndex.GetIndex()]
-			if _, ok := exportingFile.Repr.(*graph.JSRepr); ok {
-				// TODO
+			exporter := c.analyzers[impRecord.SourceIndex.GetIndex()]
+			if exporter == nil {
 				break
-				//if exp, ok := expAst.NamedExports[queryImport.Alias]; ok {
-				//	ref = exp.Ref
-				//} else if exp, ok := expAst.NamedExports[prop]; ok {
-				//	ref = exp.Ref
-				//	prop = ""
-				//} else if len(expAst.ExportStarImportRecords) != 0 {
-				//	for _, i := range expAst.ExportStarImportRecords {
-				//		otherFile := &c.files[*expAst.ImportRecords[i].SourceIndex]
-				//		if exp, ok := otherFile.Ast.NamedExports[queryImport.Alias]; ok {
-				//			ref = exp.Ref
-				//			break
-				//		}
-				//	}
-				//} else {
-				//	log.Printf("can't find export for %s in %d", queryImport.Alias, exportingFile.Source.Index)
-				//	break
-				//}
-			} else {
-				break;
 			}
+
+			if exp, ok := exporter.ast.NamedExports[queryImport.Alias]; ok {
+				ref = exp.Ref
+			} else if exp, ok := exporter.ast.NamedExports[prop]; ok {
+				ref = exp.Ref
+				prop = ""
+			} else if len(exporter.ast.ExportStarImportRecords) != 0 {
+				for _, i := range exporter.ast.ExportStarImportRecords {
+					idx := exporter.ast.ImportRecords[i].SourceIndex
+					if !idx.IsValid() {
+						continue
+					}
+					other := c.analyzers[idx.GetIndex()]
+					if other == nil {
+						continue
+					}
+					if exp, ok := other.ast.NamedExports[queryImport.Alias]; ok {
+						ref = exp.Ref
+						break
+					}
+				}
+			} else {
+				log.Printf("can't find export for %s in %d", queryImport.Alias, exporter.file.Source.Index)
+				break
+			}
+			analyzer = exporter
 		} else {
 			log.Printf("checking aliases and exports in %d\n", ref.SourceIndex)
 			analyzer := c.analyzers[ref.SourceIndex]
@@ -749,12 +755,14 @@ func (c *FlowStateCompiler) findOriginalRef(analyzer *FlowStateAnalyzer, ref js_
 				log.Printf("looking for exported namespace %v in %d\n", ref, ref.SourceIndex)
 				if ns, ok := c.analyzers[ref.SourceIndex].exportedNamespaces[ref]; ok {
 					analyzer = c.analyzers[ns]
-					// TODO!
-					//if exp, ok := ast.NamedExports[prop]; ok {
-					//	ref = exp.Ref
-					//	prop = ""
-					//	continue
-					//}
+					if analyzer == nil {
+						break
+					}
+					if exp, ok := analyzer.ast.NamedExports[prop]; ok {
+						ref = exp.Ref
+						prop = ""
+						continue
+					}
 				}
 				break
 			} else {

@@ -690,13 +690,13 @@ func buildImpl(buildOpts BuildOptions) internalBuildResult {
 	// this if the terminal is already being used for something else.
 	if logOptions.LogLevel <= logger.LevelInfo && len(internalResult.result.OutputFiles) > 0 &&
 		buildOpts.Watch == nil && !buildOpts.Incremental && !internalResult.options.WriteToStdout {
-		printSummary(logOptions, internalResult.result.OutputFiles, start)
+		PrintSummary(logOptions, internalResult.result.OutputFiles, start)
 	}
 
 	return internalResult
 }
 
-func printSummary(logOptions logger.OutputOptions, outputFiles []OutputFile, start time.Time) {
+func PrintSummary(logOptions logger.OutputOptions, outputFiles []OutputFile, start time.Time) {
 	var table logger.SummaryTable = make([]logger.SummaryTableEntry, len(outputFiles))
 
 	if len(outputFiles) > 0 {
@@ -902,7 +902,9 @@ func rebuildImpl(
 	if !log.HasErrors() {
 		// Scan over the bundle
 		bundle := bundler.ScanBundle(log, realFS, resolver, caches, entryPoints, options)
-		watchData = realFS.WatchData()
+		if buildOpts.Watch != nil {
+			watchData = realFS.WatchData()
+		}
 
 		// Stop now if there were errors
 		if !log.HasErrors() {
