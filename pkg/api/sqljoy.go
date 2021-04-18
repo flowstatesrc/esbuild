@@ -12,10 +12,10 @@ import (
 	"github.com/evanw/esbuild/internal/logger"
 )
 
-var f, _ = os.Open("/dev/null");
-var log = log_.New(f /*os.Stderr*/, "", log_.Lshortfile)
+//var f, _ = os.Open("/dev/null");
+var log = log_.New(os.Stderr, "", log_.Lshortfile)
 
-func BuildFlowState(opts *FlowStateOptions) BuildResult {
+func BuildFlowState(opts *SQLJoyOptions) BuildResult {
 	log.Println("configuring build")
 
 	// Lifted from api_impl.go buildImpl
@@ -65,11 +65,14 @@ func BuildFlowState(opts *FlowStateOptions) BuildResult {
 		}
 		log.Println("creating whitelist and client bundle")
 
+		baseDir := path.Dir(files[entryPoints[0].SourceIndex].Source.KeyPath.Text)
 		outDir := options.AbsOutputDir
 		if outDir == "" {
 			outDir = path.Dir(options.AbsOutputFile)
+			if outDir == "" {
+				outDir = baseDir
+			}
 		}
-		baseDir := path.Dir(files[entryPoints[0].SourceIndex].Source.KeyPath.Text)
 		compiler.CompileClient(outDir, baseDir, files)
 
 		if len(compiler.clientWhitelistFile.Contents) > 2 {

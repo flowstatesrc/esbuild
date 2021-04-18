@@ -23,7 +23,7 @@ func onLoadOptions(opts* api.BuildOptions, conf map[string]interface{}, server b
 	return nil
 }
 
-func ParseFlowStateConfig(configFile, cmd string) (*api.FlowStateOptions, error)  {
+func ParseFlowStateConfig(configFile, cmd string) (*api.SQLJoyOptions, error)  {
 	optsJSON, err := ioutil.ReadFile(configFile)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read config file %q: %v", configFile, err)
@@ -37,7 +37,7 @@ func ParseFlowStateConfig(configFile, cmd string) (*api.FlowStateOptions, error)
 		}
 	}
 
-	opts, err := api.NewFlowStateOptions(optsJSON, onLoadOptions, cmd)
+	opts, err := api.NewSQLJoyOptions(optsJSON, onLoadOptions, cmd)
 	//api.Config = opts (TODO: why don't we do this)
 	return opts, err
 }

@@ -6,14 +6,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/evanw/esbuild/pkg/api"
 )
 
 func TestBareExecuteQuery(t *testing.T) {
 	result := build(map[string]string{
 		"/app.js": "executeQuery(sql`executeQuery calls not written as a method access are ignored completely`);\n",
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.NotEmpty(t, result.Errors)
 	assert.Len(t, result.OutputFiles, 0)
@@ -29,7 +27,7 @@ func TestBareBeginTx(t *testing.T) {
 		};
 		window.promise = foo(beginTx());
 		`,
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.Empty(t, result.Errors)
 	assert.Len(t, result.OutputFiles, 2)
@@ -51,7 +49,7 @@ func TestNoDynamicImports(t *testing.T) {
 		"/other.js": `
 
 		export const query = sql` + "`select 1`;",
-	}, &api.FlowStateOptions{}, "/app.js")
+	}, nil, "/app.js")
 
 	assert.NotEmpty(t, result.Errors)
 	assert.Len(t, result.Errors, 2)
@@ -76,7 +74,7 @@ func TestUnexportedValidators(t *testing.T) {
 			fs.executeQuery(sql` + "`select * from users where bar = ${foo}`" + `, {}, not_exported);
 		}
 		`,
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.NotEmpty(t, result.Errors)
 	assert.Len(t, result.OutputFiles, 0)

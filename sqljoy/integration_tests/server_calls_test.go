@@ -4,8 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/evanw/esbuild/pkg/api"
 )
 
 func TestBasicServerFunc(t *testing.T) {
@@ -22,7 +20,7 @@ func TestBasicServerFunc(t *testing.T) {
 
 	result := build(map[string]string{
 		"/app.js": prog,
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)
@@ -49,7 +47,7 @@ func TestArrowServerFunc(t *testing.T) {
 
 	result := build(map[string]string{
 		"/app.js": prog,
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)
@@ -87,7 +85,7 @@ func TestServerFunctionExpr(t *testing.T) {
 	result := build(map[string]string{
 		"/foo.js": "export const removeMeRecursive = 2; export function notUsed() {}",
 		"/app.js": prog,
-	}, &api.FlowStateOptions{}, "/app.js")
+	}, nil, "/app.js")
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)

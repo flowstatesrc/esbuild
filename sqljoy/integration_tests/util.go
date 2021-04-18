@@ -2,31 +2,39 @@ package integration_tests
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/evanw/esbuild/internal/fs"
 	"github.com/evanw/esbuild/pkg/api"
 )
 
-func build(code map[string]string, opts *api.FlowStateOptions, entryPoints ...string) api.BuildResult {
+func build(code map[string]string, modifyOpts func(opts *api.SQLJoyOptions), entryPoints ...string) api.BuildResult {
 	if len(entryPoints) == 0 && len(code) == 1 {
 		for key := range code {
 			entryPoints = append(entryPoints, key)
 		}
 	}
 
+	ep, _ := json.Marshal(entryPoints)
+	optsJSON := []byte(fmt.Sprintf(`{
+		"client": {"minify": false, "entryPoints": %s, "external": ["sqljoy"]},
+		"server": {"minify": false},
+		"logLevel": "info",
+		"accountId": "account-id",
+		"accountSecret": "keepitsecretkeepitsafe"
+	}`, ep))
+
+	opts, err := api.NewSQLJoyOptions(optsJSON, nil, "build")
+	if err != nil {
+		panic(err.Error())
+	}
+
+	opts.Include = nil
 	opts.FS = fs.MockFS(code)
-	opts.Client.Bundle = true
-	opts.Server.Bundle = true
-	opts.Server.LogLevel = api.LogLevelInfo
-	opts.Client.LogLevel = opts.Server.LogLevel
-	opts.Client.Outfile = "client.bundle.js"
-	opts.Server.Outfile = "server.bundle.js"
-	opts.Client.External = []string{"sqljoy"}
-	opts.Server.External = opts.Client.External
-	opts.Client.EntryPoints = entryPoints
-	opts.Client.TreeShaking = api.TreeShakingIgnoreAnnotations
-	opts.Server.TreeShaking = api.TreeShakingIgnoreAnnotations
+	if modifyOpts != nil {
+		modifyOpts(opts)
+	}
 
 	return api.BuildFlowState(opts)
 }

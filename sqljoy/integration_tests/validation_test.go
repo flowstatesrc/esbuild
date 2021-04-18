@@ -4,8 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/evanw/esbuild/pkg/api"
 )
 
 func TestBasicValidation(t *testing.T) {
@@ -22,7 +20,7 @@ func TestBasicValidation(t *testing.T) {
 
 	result := build(map[string]string{
 		"/app.js": prog,
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)
@@ -81,7 +79,7 @@ func TestImportedValidation(t *testing.T) {
 			export function func_validator(data, errors) {}
 			export function valid_but_unused(data, errors) {}
 		`,
-	}, &api.FlowStateOptions{}, "app.js")
+	}, nil, "app.js")
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)

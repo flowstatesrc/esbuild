@@ -1,0 +1,1 @@
+../../cmd/esbuild/version.go

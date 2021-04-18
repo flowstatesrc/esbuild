@@ -4,8 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/evanw/esbuild/pkg/api"
 )
 
 func TestNoEvalFunction(t *testing.T) {
@@ -21,7 +19,7 @@ func TestNoEvalFunction(t *testing.T) {
 			fs.executeQuery(query);
 		}
 		`,
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.NotEmpty(t, result.Errors)
 	assert.Len(t, result.OutputFiles, 0)
@@ -37,7 +35,7 @@ func TestPassThroughFunctionArgs(t *testing.T) {
 		(function(query){
 			return fs.executeQuery(query);
 		})(` + "`select 1`);",
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.NotEmpty(t, result.Errors)
 	assert.Len(t, result.OutputFiles, 0)

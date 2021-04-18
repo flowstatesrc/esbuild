@@ -2,13 +2,14 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/evanw/esbuild/internal/fs"
 )
 
-type FlowStateOptions struct {
+type SQLJoyOptions struct {
 	Client BuildOptions
 	Server BuildOptions
 	Include []string
@@ -22,8 +23,8 @@ type FlowStateOptions struct {
 
 type OnloadOptionsCallback func(opts* BuildOptions, conf map[string]interface{}, server bool) error
 
-func NewFlowStateOptions(jsonOpts []byte, onLoadOptions OnloadOptionsCallback, cmd string) (*FlowStateOptions, error) {
-	opts := &FlowStateOptions{}
+func NewSQLJoyOptions(jsonOpts []byte, onLoadOptions OnloadOptionsCallback, cmd string) (*SQLJoyOptions, error) {
+	opts := &SQLJoyOptions{}
 
 	if jsonOpts != nil {
 		err := opts.UnmarshalJSON(jsonOpts, onLoadOptions, cmd)
@@ -35,7 +36,7 @@ func NewFlowStateOptions(jsonOpts []byte, onLoadOptions OnloadOptionsCallback, c
 	return opts, nil
 }
 
-func (opts *FlowStateOptions) UnmarshalJSON(jsonOpts []byte, onLoadOptions OnloadOptionsCallback, cmd string) error {
+func (opts *SQLJoyOptions) UnmarshalJSON(jsonOpts []byte, onLoadOptions OnloadOptionsCallback, cmd string) error {
 	data := struct {
 		Client map[string]interface{} `json:"client"`
 		Server map[string]interface{} `json:"server"`
@@ -45,21 +46,28 @@ func (opts *FlowStateOptions) UnmarshalJSON(jsonOpts []byte, onLoadOptions Onloa
 		LogLevel   string `json:"logLevel"`
 		AccountId string `json:"accountId"`
 		AccountSecret string `json:"accountSecret"`
-		Env map[string]interface{} `json:"env"`
+		Env map[string]json.RawMessage `json:"environment"`
 	}{}
 
 	err := json.Unmarshal(jsonOpts, &data)
 	if err != nil {
 		return err
 	}
-	if data.Env == nil {
-		data.Env = map[string]interface{}{}
+	env := map[string]string{}
+	if data.Env != nil {
+		for k, v := range data.Env {
+			env[k] = string(v)
+		}
 	}
-	data.Env["ACCOUNT_ID"] = data.AccountId
-	env, err := json.Marshal(data.Env)
-	if err != nil {
-		return err
-	}
+	env["ENV_ACCOUNT_ID"] = `"` + data.AccountId + `"`
+
+	// These defines are removed if not used, and should be kept flat (no objects or arrays)
+	// Because esbuild will inline them and they can participate in constant folding
+	// We can't change these defines between client and server builds because they re-use the
+	// cached code after the defines have been injected. Because of this, ENV_SERVER is
+	// handled explicitly by the compiler.
+	opts.Client.Define = env
+	opts.Server.Define = env
 
 	opts.Watch = data.Watch
 	opts.AccountSecret = data.AccountSecret
@@ -83,14 +91,6 @@ func (opts *FlowStateOptions) UnmarshalJSON(jsonOpts []byte, onLoadOptions Onloa
 	opts.Client.LogLevel = logLevel
 	opts.Server.LogLevel = logLevel
 	opts.Server.External = []string{"sqljoy-runtime"} // don't overwrite this, extend it
-	opts.Client.Define = map[string]string{
-		"process": "{env: " + string(env) + "}",
-	}
-	// Add the accountSecret to the server build only
-	opts.Server.Define = map[string]string{
-		"process": "{env: " + string(env) + fmt.Sprintf(`, "ACCOUNT_SECRET": "%s"}`, data.AccountSecret),
-	}
-	//opts.Server.EntryPoints = []string{"<server>", "<validators>"} // TODO
 
 	builds := []struct {
 		opts *BuildOptions
@@ -110,9 +110,11 @@ func (opts *FlowStateOptions) UnmarshalJSON(jsonOpts []byte, onLoadOptions Onloa
 		if err != nil {
 			return err
 		}
-		err = onLoadOptions(build.opts, build.conf, isServer)
-		if err != nil {
-			return err
+		if onLoadOptions != nil {
+			err = onLoadOptions(build.opts, build.conf, isServer)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -130,6 +132,17 @@ func (opts *FlowStateOptions) UnmarshalJSON(jsonOpts []byte, onLoadOptions Onloa
 }
 
 func unmarshalBuildOpts(opts *BuildOptions, conf map[string]interface{}, server bool) error {
+	// Check disallowed esbuild options
+	if conf["inject"] != nil || conf["define"] != nil {
+		return errors.New("inject/define is not currently supported, use banner/footer or environment")
+	}
+	if conf["bundle"] != nil {
+		return errors.New("bundle must be true (the default)")
+	}
+	if conf["platform"] != nil && conf["platform"] != "browser" {
+		return errors.New("only browser is supported for platform (the default)")
+	}
+
 	// Setup the default build values (common to both client and server - see caller for target specificdefaults)
 	opts.Bundle = true
 	opts.Charset = CharsetUTF8
@@ -137,7 +150,11 @@ func unmarshalBuildOpts(opts *BuildOptions, conf map[string]interface{}, server 
 	opts.MinifySyntax = true
 	opts.MinifyWhitespace = true
 	opts.MinifyIdentifiers = true
-	opts.Outdir = "build"
+	if server {
+		opts.Outfile = "server.bundle.js"
+	} else {
+		opts.Outfile = "client.bundle.js"
+	}
 	opts.Write = true
 
 	// Parse options from the conf map
@@ -164,6 +181,7 @@ func unmarshalBuildOpts(opts *BuildOptions, conf map[string]interface{}, server 
 
 	switch conf["treeShaking"] {
 	case nil:
+		fallthrough
 	case "ignoreAnnotations":
 		opts.TreeShaking = TreeShakingIgnoreAnnotations
 	default:
@@ -203,6 +221,15 @@ func unmarshalBuildOpts(opts *BuildOptions, conf map[string]interface{}, server 
 		opts.Write = false
 	default:
 		return fmt.Errorf("invalid type %T for write", conf["write"])
+	}
+
+	switch conf["format"] {
+	case "cjs":
+		return errors.New("CommonJS output format is not supported")
+	case "esm":
+		return errors.New("ESM output format is not supported")
+	default:
+		opts.Format = FormatIIFE
 	}
 
 	// TODO setup default targets/engines for client and server

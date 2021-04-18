@@ -127,7 +127,7 @@ type undoReplaceStmt struct {
 }
 
 type FlowStateCompiler struct {
-	opts            *FlowStateOptions
+	opts            *SQLJoyOptions
 	logOptions      logger.OutputOptions
 	log             logger.Log
 	fs              fs.FS
@@ -146,7 +146,7 @@ type FlowStateCompiler struct {
 	debug           bool
 }
 
-func NewFlowStateCompiler(opts *FlowStateOptions, logOptions logger.OutputOptions, log logger.Log, fs fs.FS, caches *cache.CacheSet) *FlowStateCompiler {
+func NewFlowStateCompiler(opts *SQLJoyOptions, logOptions logger.OutputOptions, log logger.Log, fs fs.FS, caches *cache.CacheSet) *FlowStateCompiler {
 	return &FlowStateCompiler{
 		opts: opts,
 		logOptions: logOptions,
@@ -504,6 +504,7 @@ func (c *FlowStateCompiler) generateOutputs() {
 					c.replaceExpr(q.parent, q.template, &js_ast.EUndefined{}, q.inlinedServerCount != q.ServerReferences)
 				} else if q.inlinedServerCount == q.ServerReferences {
 					// Used on the client, but not the server
+
 					c.undoReplaceExpr = append(c.undoReplaceExpr, undoReplaceExpr{q.parent, &js_ast.EUndefined{}})
 				}
 				continue
@@ -682,6 +683,7 @@ func (c *FlowStateCompiler) replaceQuery(visitor *FlowStateAnalyzer, q *query) {
 		// This query is used on the client, but not the server.
 		// We want to remove it for the server build, but leave it as-is for the client build
 		// We can do this by adding an "undo" entry that removes it when run before the server build.
+		log.Printf("replaced client-only query starting with %q with undefined in server build\n", q.template.HeadRaw)
 		c.undoReplaceExpr = append(c.undoReplaceExpr, undoReplaceExpr{q.parent, &js_ast.EUndefined{}})
 	}
 

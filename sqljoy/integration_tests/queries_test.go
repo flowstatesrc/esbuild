@@ -4,14 +4,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/evanw/esbuild/pkg/api"
 )
 
 func TestInlineQuery(t *testing.T) {
 	result := build(map[string]string{
 		"/app.js": "fs.executeQuery(sql`select 1`);\n",
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)
@@ -44,7 +42,7 @@ func TestInlineQuery(t *testing.T) {
 func TestInlineQueryWithFragment(t *testing.T) {
 	result := build(map[string]string{
 		"/app.js": "const table = sql.p`foo`;\nconst fallback = sql.p`fallback`;\nfs.executeQuery(sql`select 1 from ${table || fallback}`);\n",
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)
@@ -103,7 +101,7 @@ func TestInlineQueryWithFragment(t *testing.T) {
 func TestQueryVar(t *testing.T) {
 	result := build(map[string]string{
 		"/app.js": "let bar = 12, baz = 'foo';\nconst query = sql`select * from foo where bar = ${bar} and baz = ${baz}`;\nfs.executeQuery(query);\n",
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)
@@ -141,7 +139,7 @@ func TestQueryUsedTwice(t *testing.T) {
 		"/app.js": "import \"./other\";\nimport {query} from \"./query\";\nfs.executeQuery(query);\n",
 		"/other.js": "import {query} from \"./query\";\nfs.executeQuery(query);\n",
 		"/query.js": "let bar = 12, baz = 'foo';\nexport const query = sql`select * from foo where bar = ${bar} and baz = ${baz}`;\n",
-	}, &api.FlowStateOptions{}, "/app.js")
+	}, nil, "/app.js")
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)
@@ -181,7 +179,7 @@ func TestQueryUsedTwice(t *testing.T) {
 func TestQueriesObjectLiteral(t *testing.T) {
 	result := build(map[string]string{
 		"/app.js": "const queries = {\n  'query': sql`SELECT * FROM object_literal WHERE ${query}`,\n  'prop': sql`SELECT * FROM object_property`\n};\nfunction dynamic(key) {\n  return fs.executeQuery(queries[key]);\n}\nfs.executeQuery(queries.prop);\ndynamic(window.location);",
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)
@@ -242,7 +240,7 @@ func TestQueriesObjectLiteral(t *testing.T) {
 func TestQueryAliasingAssignments(t *testing.T) {
 	result := build(map[string]string{
 		"/app.js": "let bar = 12, baz = 'foo';\nlet assignment;\nconst query = sql`select * from foo where bar = ${bar} and baz = ${baz}`;\nconst query2 = query;\nassignment=query2;\nfs.executeQuery(assignment);\n",
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)
@@ -278,7 +276,7 @@ func TestQueryAliasingAssignments(t *testing.T) {
 func TestPrivateQuery(t *testing.T) {
 	result := build(map[string]string{
 		"/app.js": "let filter = (window.location) ? sql.p`user_id = %{SESSION.user_id}` : sql.p`%{SESSION.roles}::jsonb ? role`;\nconst query = sql`update foo set bar = ${12} where ${filter}`;\nfs.executeQuery(query);\n",
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)
@@ -335,7 +333,7 @@ func TestNotPrivateQuery(t *testing.T) {
 	// If one fragment is public, and another is private then the query is public.
 	result := build(map[string]string{
 		"/app.js": "let filter = (window.location) ? sql.p`user_id = %{SESSION.user_id}` : sql.p`1 = 1`;\nconst query = sql`update foo set bar = ${12} where ${filter}`;\nfs.executeQuery(query);\n",
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)
@@ -409,7 +407,7 @@ func TestMixedQuery(t *testing.T) {
 
 			fs.executeQuery(query);
 			`,
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)
@@ -470,7 +468,7 @@ func TestNoServerOnlyQuery(t *testing.T) {
 				const result = await server(window.fs.beginTx(), a, b, 3);
 			};
 			`,
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)
@@ -529,7 +527,7 @@ func TestMixedInlineServerOnlyFragment(t *testing.T) {
 			};
 
 			fs.executeQuery(sql` + "`${fragment}`);",
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)
@@ -609,7 +607,7 @@ func TestMixedInlineClientOnlyFragment(t *testing.T) {
 
 			fs.executeQuery(sql` + "`select * from orders where user_id IN (${fragment})`" + `);
 			`,
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)
@@ -674,7 +672,7 @@ func TestMixedInlineClientOnlyFragment(t *testing.T) {
 func TestQueryOnGetClientDirect(t *testing.T) {
 	result := build(map[string]string{
 		"/app.js": "import {getClient} from \"sqljoy\";\ngetClient().executeQuery(sql`select 1`);\n",
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)
@@ -707,7 +705,7 @@ func TestQueryOnGetClientDirect(t *testing.T) {
 //func TestInlineTernayExpression(t *testing.T) {
 //	result := build(map[string]string{
 //		"/app.js": "let query = sql`select * from users order by name ${window.sort ? sql`ASC` : sql`DESC`}`;\nfs.executeQuery(query);",
-//	}, &api.FlowStateOptions{})
+//	}, nil)
 //
 //	assert.Empty(t, result.Errors)
 //	assert.Len(t, result.OutputFiles, 0)
@@ -720,7 +718,7 @@ func TestQueryOnGetClientDirect(t *testing.T) {
 //func TestInlineLogicalExpression(t *testing.T) {
 //	result := build(map[string]string{
 //		"/app.js": "let query = sql`select * from users order by name ${window.sort && sql.p`ASC` || sql.p`DESC`}`;\nfs.executeQuery(query);",
-//	}, &api.FlowStateOptions{})
+//	}, nil)
 //
 //	assert.Empty(t, result.Errors)
 //	assert.Len(t, result.OutputFiles, 0)

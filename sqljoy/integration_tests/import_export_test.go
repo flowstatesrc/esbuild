@@ -4,8 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/evanw/esbuild/pkg/api"
 )
 
 func TestImportQuery(t *testing.T) {
@@ -13,7 +11,7 @@ func TestImportQuery(t *testing.T) {
 		"/app.js": "import {query} from \"./query\";\nfs.executeQuery(query);\n",
 		"/query.js": "import filter from \"./filter\";\nexport const query = sql`select * from foo where ${filter}`;\n",
 		"/filter.js": "const cond = sql.p`foo = ${window.bar}`;\nexport default cond;\n",
-	}, &api.FlowStateOptions{}, "/app.js")
+	}, nil, "/app.js")
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)
@@ -49,7 +47,7 @@ func TestImportNamespace(t *testing.T) {
 	result := build(map[string]string{
 		"/app.js": "import * as queries from \"./query\";\nfs.executeQuery(queries.query);\n",
 		"/query.js": "export const query = sql`insert into foo (text) values (%{bar})`;\n",
-	}, &api.FlowStateOptions{}, "/app.js")
+	}, nil, "/app.js")
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)
@@ -86,7 +84,7 @@ func TestImportReexportedName(t *testing.T) {
 		"/query.js": "export const query = sql`ALTER TABLE distributors RENAME COLUMN address TO city`;\n",
 		"/rexported.js": "import {query} from \"./star\";\nexport const aliased = query;\n",
 		"/star.js": "export * from \"./query\";\n",
-	}, &api.FlowStateOptions{}, "/app.js")
+	}, nil, "/app.js")
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)
@@ -121,7 +119,7 @@ func TestImportAliasedName(t *testing.T) {
 	result := build(map[string]string{
 		"/app.js": "import {query as aliased} from \"./query\";\nfs.executeQuery(aliased);\n",
 		"/query.js": "export const query = sql`delete from foo where bar = %{bar} and baz = %{baz}`;\n",
-	}, &api.FlowStateOptions{}, "/app.js")
+	}, nil, "/app.js")
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)

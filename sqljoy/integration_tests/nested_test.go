@@ -4,8 +4,6 @@ import (
 "testing"
 
 "github.com/stretchr/testify/assert"
-
-"github.com/evanw/esbuild/pkg/api"
 )
 
 const nested = `
@@ -28,7 +26,7 @@ nested(fs.beginTx(), ...window.args);
 func TestNestedFragments(t *testing.T) {
 	result := build(map[string]string{
 		"/app.js": nested,
-	}, &api.FlowStateOptions{})
+	}, nil)
 
 	assert.Empty(t, result.Errors)
 	assert.NotEmpty(t, result.OutputFiles)
