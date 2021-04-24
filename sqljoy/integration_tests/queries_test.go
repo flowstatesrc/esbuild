@@ -50,7 +50,7 @@ func TestInlineQueryWithFragment(t *testing.T) {
 	assert.NotEmpty(t, whitelist)
 
 	assert.Equal(t, map[string]interface{}{
-		"query": "select 1 from ${fragment1}",
+		"query": "select 1 from %{}",
 		"type": "select",
 		"isPublic": true,
 		"clientReferences": 1.0,
@@ -95,12 +95,12 @@ func TestInlineQueryWithFragment(t *testing.T) {
 	code := string(getOutFile(&result, "client.bundle.js"))
 	assert.Contains(t, code, `var table = {query: "LCa0a2j_xo_5m0U8HTBBNBNCLXBkg7-g-YpeiGJm", text: "foo", params: {}};`)
 	assert.Contains(t, code, `fallback = {query: "XH7iB0tlhT9x_FoBzhlP8m3u322qzbcVxr7v39Pz", text: "fallback", params: {}};`)
-	assert.Contains(t, code, `sql.merge({query: "HoVHYay37wWiR5AQ7lDnUF3FiGZAVW0VxayxAfth", text: "select 1 from ${fragment1}", params: {}}, table || fallback));`)
+	assert.Contains(t, code, `sql.merge({query: "HoVHYay37wWiR5AQ7lDnUF3FiGZAVW0VxayxAfth", text: "select 1 from %{}", params: {}}, table || fallback));`)
 }
 
 func TestQueryVar(t *testing.T) {
 	result := build(map[string]string{
-		"/app.js": "let bar = 12, baz = 'foo';\nconst query = sql`select * from foo where bar = ${bar} and baz = ${baz}`;\nfs.executeQuery(query);\n",
+		"/app.js": "let bar = 12, baz = 'foo';\nconst query = sql`select * from foo where bar = ${bar} and baz = ${baz}:foo:`;\nfs.executeQuery(query);\n",
 	}, nil)
 
 	assert.Empty(t, result.Errors)
@@ -130,7 +130,7 @@ func TestQueryVar(t *testing.T) {
 	code := string(getOutFile(&result, "client.bundle.js"))
 	assert.Contains(t, code, `var bar = 12;`)
 	assert.Contains(t, code, `var baz = "foo";`)
-	assert.Contains(t, code, `var query = {query: "1FfqlKV9DHWV-e2cGUKAAXu6cILqFYOegLBlAT5o", text: "select * from foo where bar = $1 and baz = $2", params: {$1: bar, $2: baz}};`)
+	assert.Contains(t, code, `var query = {query: "1FfqlKV9DHWV-e2cGUKAAXu6cILqFYOegLBlAT5o", text: "select * from foo where bar = $1 and baz = $2", params: {bar, foo: baz}};`)
 	assert.Contains(t, code, `fs.executeQuery(query);`)
 }
 
@@ -138,7 +138,7 @@ func TestQueryUsedTwice(t *testing.T) {
 	result := build(map[string]string{
 		"/app.js": "import \"./other\";\nimport {query} from \"./query\";\nfs.executeQuery(query);\n",
 		"/other.js": "import {query} from \"./query\";\nfs.executeQuery(query);\n",
-		"/query.js": "let bar = 12, baz = 'foo';\nexport const query = sql`select * from foo where bar = ${bar} and baz = ${baz}`;\n",
+		"/query.js": "let bar = 12, foo = {baz: 'foo'};\nexport const query = sql`select * from foo where bar = ${bar}:a param name: and baz = ${foo.baz}`;\n",
 	}, nil, "/app.js")
 
 	assert.Empty(t, result.Errors)
@@ -171,8 +171,8 @@ func TestQueryUsedTwice(t *testing.T) {
 
 	code := string(getOutFile(&result, "client.bundle.js"))
 	assert.Contains(t, code, `var bar = 12;`)
-	assert.Contains(t, code, `var baz = "foo";`)
-	assert.Contains(t, code, `var query = {query: "1FfqlKV9DHWV-e2cGUKAAXu6cILqFYOegLBlAT5o", text: "select * from foo where bar = $1 and baz = $2", params: {$1: bar, $2: baz}};`)
+	assert.Contains(t, code, `var foo = {baz: "foo"};`)
+	assert.Contains(t, code, `var query = {query: "1FfqlKV9DHWV-e2cGUKAAXu6cILqFYOegLBlAT5o", text: "select * from foo where bar = $1 and baz = $2", params: {"a param name": bar, baz: foo.baz}};`)
 	assert.Contains(t, code, `fs.executeQuery(query);`)
 }
 
@@ -231,7 +231,7 @@ func TestQueriesObjectLiteral(t *testing.T) {
 	assert.Len(t, whitelist, 2)
 
 	code := string(getOutFile(&result, "client.bundle.js"))
-	assert.Contains(t, code, `query: {query: "1KeaRXO1OnvO5WtC74BPxS5w_XhnuwLiSvop12z1", text: "SELECT * FROM object_literal WHERE $1", params: {$1: query}},`)
+	assert.Contains(t, code, `query: {query: "1KeaRXO1OnvO5WtC74BPxS5w_XhnuwLiSvop12z1", text: "SELECT * FROM object_literal WHERE $1", params: {query}},`)
 	assert.Contains(t, code, `prop: {query: "Rf2BEiMSz4YmBxi8OsmwPjKfqw5Fn94cz383TB7G", text: "SELECT * FROM object_property", params: {}}`)
 	assert.Contains(t, code, `return fs.executeQuery(queries[key]);`)
 	assert.Contains(t, code, `fs.executeQuery(queries.prop);`)
@@ -239,7 +239,7 @@ func TestQueriesObjectLiteral(t *testing.T) {
 
 func TestQueryAliasingAssignments(t *testing.T) {
 	result := build(map[string]string{
-		"/app.js": "let bar = 12, baz = 'foo';\nlet assignment;\nconst query = sql`select * from foo where bar = ${bar} and baz = ${baz}`;\nconst query2 = query;\nassignment=query2;\nfs.executeQuery(assignment);\n",
+		"/app.js": "let bar = 12, baz = 'foo';\nlet assignment;\nconst query = sql`select * from foo where bar = ${bar}:baz: and baz = ${baz}:bar:`;\nconst query2 = query;\nassignment=query2;\nfs.executeQuery(assignment);\n",
 	}, nil)
 
 	assert.Empty(t, result.Errors)
@@ -269,7 +269,7 @@ func TestQueryAliasingAssignments(t *testing.T) {
 	code := string(getOutFile(&result, "client.bundle.js"))
 	assert.Contains(t, code, `var bar = 12;`)
 	assert.Contains(t, code, `var baz = "foo";`)
-	assert.Contains(t, code, `var query = {query: "1FfqlKV9DHWV-e2cGUKAAXu6cILqFYOegLBlAT5o", text: "select * from foo where bar = $1 and baz = $2", params: {$1: bar, $2: baz}};`)
+	assert.Contains(t, code, `var query = {query: "1FfqlKV9DHWV-e2cGUKAAXu6cILqFYOegLBlAT5o", text: "select * from foo where bar = $1 and baz = $2", params: {baz: bar, bar: baz}};`)
 	assert.Contains(t, code, `fs.executeQuery(assignment);`)
 }
 
@@ -284,7 +284,7 @@ func TestPrivateQuery(t *testing.T) {
 	assert.NotEmpty(t, whitelist)
 
 	assert.Equal(t, map[string]interface{}{
-		"query": "update foo set bar = $1 where ${fragment1}",
+		"query": "update foo set bar = $1 where %{}",
 		"type": "update",
 		"clientReferences": 1.0,
 		"definedAt": map[string]interface{}{
@@ -325,7 +325,7 @@ func TestPrivateQuery(t *testing.T) {
 
 	code := string(getOutFile(&result, "client.bundle.js"))
 	assert.Contains(t, code, `var filter = window.location ? {query: "mo_YXFbQvk1YV1_MdJJk2fcJziqIydnlk0-EEwdc", text: "user_id = ${SESSION.user_id}", params: {}} : {query: "KmyrotC7fWU_BAuR_cM5nOT-uYxz1k-u8LZXCa10", text: "${SESSION.roles}::jsonb ? role", params: {}};`)
-	assert.Contains(t, code, `sql.merge({query: "7NpJOlclOBksJP_OqcNhxpmJJJLv7xzyOB7U3AO1", text: "update foo set bar = $1 where ${fragment1}", params: {$1: 12}}, filter);`)
+	assert.Contains(t, code, `sql.merge({query: "7NpJOlclOBksJP_OqcNhxpmJJJLv7xzyOB7U3AO1", text: "update foo set bar = $1 where %{}", params: {$1: 12}}, filter);`)
 	assert.Contains(t, code, `fs.executeQuery(query);`)
 }
 
@@ -341,7 +341,7 @@ func TestNotPrivateQuery(t *testing.T) {
 	assert.NotEmpty(t, whitelist)
 
 	assert.Equal(t, map[string]interface{}{
-		"query": "update foo set bar = $1 where ${fragment1}",
+		"query": "update foo set bar = $1 where %{}",
 		"type": "update",
 		"isPublic": true,
 		"clientReferences": 1.0,
@@ -384,7 +384,7 @@ func TestNotPrivateQuery(t *testing.T) {
 
 	code := string(getOutFile(&result, "client.bundle.js"))
 	assert.Contains(t, code, `var filter = window.location ? {query: "mo_YXFbQvk1YV1_MdJJk2fcJziqIydnlk0-EEwdc", text: "user_id = ${SESSION.user_id}", params: {}} : {query: "JFAYk5QGdzmjTvsNnguUqMZJNEmliJM9kwSI2KRO", text: "1 = 1", params: {}};`)
-	assert.Contains(t, code, `sql.merge({query: "TpZkx2L5A-YVHmYJJRi8u-ejjAeXOLuNq1Gw3TXv", text: "update foo set bar = $1 where ${fragment1}", params: {$1: 12}}, filter);`)
+	assert.Contains(t, code, `sql.merge({query: "TpZkx2L5A-YVHmYJJRi8u-ejjAeXOLuNq1Gw3TXv", text: "update foo set bar = $1 where %{}", params: {$1: 12}}, filter);`)
 	assert.Contains(t, code, `fs.executeQuery(query);`)
 }
 

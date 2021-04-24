@@ -50,7 +50,7 @@ func TestConditionalFragments(t *testing.T) {
 	assert.NotEmpty(t, whitelist)
 
 	assert.Equal(t, map[string]interface{}{
-		"query": "SELECT * FROM orders AS o WHERE ${fragment1} ORDER BY o.${fragment2} ${fragment3}",
+		"query": "SELECT * FROM orders AS o WHERE %{} ORDER BY o.%{} %{}",
 		"type": "select",
 		"isPublic": true,
 		"clientReferences": 1.0,
@@ -193,12 +193,12 @@ func TestConditionalFragments(t *testing.T) {
 	assert.Contains(t, code, `total: {query: "ESOYctF4cprMnlrq9_wAGg_9h4ySIzC-Q3Ermzvg", text: "total", params: {}},`)
 	assert.Contains(t, code, `created_at: {query: "6Hip2aFyGRkHcxVQTAGgiPI2D8uywInKZfqsBfoE", text: "created_at", params: {}}`)
 
-	assert.Contains(t, code, `filter = {query: "-0tcmJGPljHBFkS6G1jCyU0J5_ozJxAUCLhX3MDS", text: "o.product_id = $1", params: {$1: value}};`)
-	assert.Contains(t, code, `filter = {query: "IFA8xH25nGEvbvo-y74kExORI9WfiWVT1LpPmz_w", text: "o.order_id = $1", params: {$1: value}};`)
-	assert.Contains(t, code, `filter = {query: "2Oxe6Mct_J91HL4F3hgya17FI9iO_F4pJ4GTPJYb", text: "o.customer_id = $1", params: {$1: value}};`)
-	assert.Contains(t, code, `filter = {query: "IW9pTVDZwdhBGSzYH_70oCO0AWw2TsksiGVS18CZ", text: "o.shipped_at = $1", params: {lateBound: "__PARAM_"}};`)
+	assert.Contains(t, code, `filter = {query: "-0tcmJGPljHBFkS6G1jCyU0J5_ozJxAUCLhX3MDS", text: "o.product_id = $1", params: {value}};`)
+	assert.Contains(t, code, `filter = {query: "IFA8xH25nGEvbvo-y74kExORI9WfiWVT1LpPmz_w", text: "o.order_id = $1", params: {value}};`)
+	assert.Contains(t, code, `filter = {query: "2Oxe6Mct_J91HL4F3hgya17FI9iO_F4pJ4GTPJYb", text: "o.customer_id = $1", params: {value}};`)
+	assert.Contains(t, code, `filter = {query: "IW9pTVDZwdhBGSzYH_70oCO0AWw2TsksiGVS18CZ", text: "o.shipped_at = $1", params: {lateBound: void 0}};`)
 
 	assert.Contains(t, code, `const orderByDir = sortDir == null || sortDir < 0 ? {query: "mE2k_mkwrNk4b252CyCYu2qUSfFfDyDVElTXquM_", text: "DESC", params: {}} : {query: "MjsIfgr8vMR3KZ-uu6SLDGKWJvrVuasRvNtHRcBk", text: "ASC", params: {}};`)
-	assert.Contains(t, code, `sql.merge({query: "7CsLDp-W4FRhLjxyFRuJYQ-0sqt1RvnyFvHc9MMG", text: "SELECT * FROM orders AS o WHERE ${fragment1} ORDER BY o.${fragment2} ${fragment3}", params: {}}, filter, orderBy, orderByDir);`)
+	assert.Contains(t, code, `sql.merge({query: "7CsLDp-W4FRhLjxyFRuJYQ-0sqt1RvnyFvHc9MMG", text: "SELECT * FROM orders AS o WHERE %{} ORDER BY o.%{} %{}", params: {}}, filter, orderBy, orderByDir);`)
 	assert.Contains(t, code, `return fs.executeQuery(query, {lateBound});`)
 }

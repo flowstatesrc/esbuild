@@ -39,7 +39,7 @@ func TestImportQuery(t *testing.T) {
 
 	code := string(getOutFile(&result, "client.bundle.js"))
 	assert.Contains(t, code, `var cond = void 0;`) // was inlined into the query
-	assert.Contains(t, code, `var query = {query: "ZMgpomtDsreEoz4spXNvf-xsrLEKUHsYvzOBYUNH", text: "select * from foo where foo = $1", params: {$1: window.bar}};`)
+	assert.Contains(t, code, `var query = {query: "ZMgpomtDsreEoz4spXNvf-xsrLEKUHsYvzOBYUNH", text: "select * from foo where foo = $1", params: {bar: window.bar}};`)
 	assert.Contains(t, code, `fs.executeQuery(query);`)
 }
 
@@ -74,7 +74,7 @@ func TestImportNamespace(t *testing.T) {
 	assert.Len(t, whitelist, 1)
 
 	code := string(getOutFile(&result, "client.bundle.js"))
-	assert.Contains(t, code, `var query = {query: "xg4Am1Hr3jMdrxVjdeB6QpPPXlM187k4yBjCeM8S", text: "insert into foo (text) values ($1)", params: {bar: "__PARAM_"}};`)
+	assert.Contains(t, code, `var query = {query: "xg4Am1Hr3jMdrxVjdeB6QpPPXlM187k4yBjCeM8S", text: "insert into foo (text) values ($1)", params: {bar: void 0}};`)
 	assert.Contains(t, code, `fs.executeQuery(query);`)
 }
 
@@ -146,6 +146,6 @@ func TestImportAliasedName(t *testing.T) {
 	assert.Len(t, whitelist, 1)
 
 	code := string(getOutFile(&result, "client.bundle.js"))
-	assert.Contains(t, code, `var query = {query: "A6in6tB2ANhLSehRXnz7yTPVMkjSh1hgfQtGSxlm", text: "delete from foo where bar = $1 and baz = $2", params: {bar: "__PARAM_", baz: "__PARAM_"}};`)
+	assert.Contains(t, code, `var query = {query: "A6in6tB2ANhLSehRXnz7yTPVMkjSh1hgfQtGSxlm", text: "delete from foo where bar = $1 and baz = $2", params: {bar: void 0, baz: void 0}};`)
 	assert.Contains(t, code, `fs.executeQuery(query);`)
 }

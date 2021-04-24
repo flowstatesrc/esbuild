@@ -12,8 +12,8 @@ import (
 	"github.com/evanw/esbuild/internal/logger"
 )
 
-//var f, _ = os.Open("/dev/null");
-var log = log_.New(os.Stderr, "", log_.Lshortfile)
+var f, _ = os.Open("/dev/null");
+var log = log_.New(f /*os.Stderr*/, "", log_.Lshortfile)
 
 func BuildFlowState(opts *SQLJoyOptions) BuildResult {
 	log.Println("configuring build")

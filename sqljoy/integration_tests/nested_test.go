@@ -40,13 +40,13 @@ func TestNestedFragments(t *testing.T) {
 	assert.Contains(t, client, `fs.serverCall("EALxv89d3vuX00lFTAuaCUy4o-1D9Bb68NA7Dhm7", ...window.args)`)
 
 	server := string(getOutFile(&result, "server.bundle.js"))
-	assert.Contains(t, server, `cond1 = {query: "bBefIeb2K2KQVdirQPRU7QLki2hWORNHO4V9Njji", text: "$1 $2 $3", params: {$1: sql.p(c1.name), $2: sql.p(c1.eq ? "=" : "!="), $3: c1.value}};`)
-	assert.Contains(t, server, `cond2 = {query: "bBefIeb2K2KQVdirQPRU7QLki2hWORNHO4V9Njji", text: "$1 $2 $3", params: {$1: sql.p(c2.name), $2: sql.p(c2.eq ? "=" : "!="), $3: c2.value}};`)
-	assert.Contains(t, server, `cond3 = {query: "bBefIeb2K2KQVdirQPRU7QLki2hWORNHO4V9Njji", text: "$1 $2 $3", params: {$1: sql.p(c3.name), $2: sql.p(c3.eq ? "=" : "!="), $3: c3.value}};`)
-	assert.Contains(t, server, `cond4 = {query: "bBefIeb2K2KQVdirQPRU7QLki2hWORNHO4V9Njji", text: "$1 $2 $3", params: {$1: sql.p(c4.name), $2: sql.p(c4.eq ? "=" : "!="), $3: c4.value}};`)
-	assert.Contains(t, server, `and = sql.merge({query: "B4LMwzykPazjHC-a7xqjp-OPJduYtwsODLeCc2a9", text: "${fragment1} AND ${fragment2}", params: {}}, c1.enabled ? cond1 : cond2, c3.enabled ? cond3 : cond3);`)
-	assert.Contains(t, server, `or = sql.merge({query: "1tXJ_klVv7PlxVxh2Lf2AoIKIU8VO6sd-9foxkLt", text: "${fragment1} OR ${fragment2}", params: {}}, c2.enabled ? cond2 : cond3, c4.enabled ? cond4 : cond1);`)
-	assert.Contains(t, server, `let query = sql.merge({query: "bsxJbJaYaHxS4NNz-F7qWslcfQnMSrT0j_-u5UAv", text: "SELECT * FROM orders WHERE ${fragment1} ORDER BY created_at $1", params: {$1: sql.p(sortDir)}}, both ? or : and);`)
+	assert.Contains(t, server, `cond1 = {query: "bBefIeb2K2KQVdirQPRU7QLki2hWORNHO4V9Njji", text: "$1 $2 $3", params: {$1: sql.p(c1.name), $2: sql.p(c1.eq ? "=" : "!="), value: c1.value}};`)
+	assert.Contains(t, server, `cond2 = {query: "bBefIeb2K2KQVdirQPRU7QLki2hWORNHO4V9Njji", text: "$1 $2 $3", params: {$1: sql.p(c2.name), $2: sql.p(c2.eq ? "=" : "!="), value: c2.value}};`)
+	assert.Contains(t, server, `cond3 = {query: "bBefIeb2K2KQVdirQPRU7QLki2hWORNHO4V9Njji", text: "$1 $2 $3", params: {$1: sql.p(c3.name), $2: sql.p(c3.eq ? "=" : "!="), value: c3.value}};`)
+	assert.Contains(t, server, `cond4 = {query: "bBefIeb2K2KQVdirQPRU7QLki2hWORNHO4V9Njji", text: "$1 $2 $3", params: {$1: sql.p(c4.name), $2: sql.p(c4.eq ? "=" : "!="), value: c4.value}};`)
+	assert.Contains(t, server, `and = sql.merge({query: "B4LMwzykPazjHC-a7xqjp-OPJduYtwsODLeCc2a9", text: "%{} AND %{}", params: {}}, c1.enabled ? cond1 : cond2, c3.enabled ? cond3 : cond3);`)
+	assert.Contains(t, server, `or = sql.merge({query: "1tXJ_klVv7PlxVxh2Lf2AoIKIU8VO6sd-9foxkLt", text: "%{} OR %{}", params: {}}, c2.enabled ? cond2 : cond3, c4.enabled ? cond4 : cond1);`)
+	assert.Contains(t, server, `let query = sql.merge({query: "bsxJbJaYaHxS4NNz-F7qWslcfQnMSrT0j_-u5UAv", text: "SELECT * FROM orders WHERE %{} ORDER BY created_at $1", params: {$1: sql.p(sortDir)}}, both ? or : and);`)
 	assert.Contains(t, server, `return tx.executeQuery(query);`)
 }
 

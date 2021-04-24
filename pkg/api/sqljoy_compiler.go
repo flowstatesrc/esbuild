@@ -19,8 +19,6 @@ import (
 	"github.com/evanw/esbuild/internal/logger"
 )
 
-var lateBoundParamStringLiteral = []uint16{'_', '_', 'P', 'A', 'R', 'A', 'M', '_'}
-
 type moduleImports struct {
 	module string
 	imports []importedName
@@ -594,6 +592,7 @@ func (c *FlowStateCompiler) replaceQuery(visitor *FlowStateAnalyzer, q *query) {
 
 	i := 1
 	q.IsPublic = true
+	paramNames := map[string]struct{}{}
 	params := &js_ast.EObject{Properties: make([]js_ast.Property, 0, len(q.vars)), IsSingleLine: true}
 	var queryFragments [][]*query
 	var fragments []js_ast.Expr
@@ -603,23 +602,26 @@ func (c *FlowStateCompiler) replaceQuery(visitor *FlowStateAnalyzer, q *query) {
 
 		expr := v.expr
 		name := v.name
+		if name == "" {
+			name = c.getVarName(v.ref, v.expr)
+			if _, exists := paramNames[name]; exists {
+				name = "" // duplicate name, use the numeric placeholder below (as we do if there is no suitable name)
+			} else {
+				paramNames[name] = struct{}{}
+			}
+		}
+
 		switch v.ty {
 		case queryVarTypeVar:
 			text = append(text, fmt.Sprintf("$%d", i))
 		case queryVarTypeParam:
 			// late-bound parameter (at executeQuery call)
-			expr = &js_ast.Expr{Data: &js_ast.EString{Value: lateBoundParamStringLiteral}, Loc: loc}
+			expr = &js_ast.Expr{Data: &js_ast.EUndefined{}, Loc: loc}
 			text = append(text, fmt.Sprintf("$%d", i))
 		case queryVarTypeFragment:
 			fragments = append(fragments, *expr)
 			queryFragments = append(queryFragments, v.fragments)
-			var n string
-			if name == "" {
-				n =  fmt.Sprintf("${fragment%d}", len(fragments))
-			} else {
-				n = fmt.Sprintf("${%s}", v.name)
-			}
-			text = append(text, n)
+			text = append(text, "%{}")
 			continue
 		case queryVarTypeServer:
 			q.IsPublic = false
@@ -891,6 +893,25 @@ func (c *FlowStateCompiler) replaceStmt(stmt *js_ast.Stmt, old, new js_ast.S, un
 		c.undoReplaceStmt = append(c.undoReplaceStmt, undoReplaceStmt{stmt, old})
 	}
 	return true
+}
+
+func (c * FlowStateCompiler) getVarName(ref js_ast.Ref, expr *js_ast.Expr) string {
+	if expr != nil {
+		if dot, ok := expr.Data.(*js_ast.EDot); ok {
+			return dot.Name
+		}
+	}
+
+	if ref != js_ast.InvalidRef {
+		analyzer := c.analyzers[ref.SourceIndex]
+		if analyzer == nil {
+			return ""
+		}
+
+		return analyzer.ast.Symbols[ref.InnerIndex].OriginalName
+	}
+
+	return ""
 }
 
 func getRefForIdentifierOrPropertyAccess(visitor *FlowStateAnalyzer, expr *js_ast.Expr) (ref js_ast.Ref, prop string) {

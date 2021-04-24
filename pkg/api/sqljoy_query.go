@@ -149,7 +149,7 @@ type queryVar struct {
 
 func newQuery(qp queryPart) (*query, error) {
 	parts := make([]string, 0, len(qp.template.Parts)+1)
-	vars := make([]queryVar, len(qp.template.Parts))
+	vars := make([]queryVar, 0, len(qp.template.Parts))
 
 	appendPart := func(s string) {
 		i := 0
@@ -178,9 +178,17 @@ func newQuery(qp queryPart) (*query, error) {
 	for i := range qp.template.Parts {
 		part := &qp.template.Parts[i]
 		ref, _ := getRefForIdentifierOrPropertyAccess(nil, &part.Value)
-		vars[i].ref = ref
-		vars[i].expr = &part.Value
-		appendPart(part.TailRaw)
+		vars = append(vars, queryVar{ref: ref, expr: &part.Value})
+		tail := part.TailRaw
+		// Record any :label: following the template expression and don't include it in parts.
+		if len(tail) != 0 && tail[0] == ':' {
+			if end := strings.IndexByte(tail[1:], ':'); end > 0 {
+				end += 1 // we started from [1:]
+				vars[len(vars)-1].name = tail[1:end]
+				tail = tail[end+1:]
+			}
+		}
+		appendPart(tail)
 	}
 
 	if len(parts) != len(vars) + 1 {
